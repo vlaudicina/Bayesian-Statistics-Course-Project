@@ -1,0 +1,79 @@
+Project Code
+
+###Calling File
+getwd()
+setwd("C:\\Users\\vlaudicina\\Desktop\\Personal\\R")
+
+###Establishing Data
+dat <- read.csv("BridgeCrossing.csv")
+str(datBridge)
+datBridge = na.omit(dat)
+
+###Exploring data
+boxplot(Bridge ~ Month, data=datBridge)
+boxplot(Bridge ~ DayNum, data=datBridge)
+hist(datBridge$Bridge)
+pairs(datBridge)
+
+### Calling JAGS software
+library("rjags")
+
+#### Model
+mod1_string = " model {
+for (i in 1:length(Bridge)) {
+Bridge[i] ~ dpois(lam[Monthi[i]])
+}
+
+for (j in 1:max(Monthi)) {
+lam[j] ~ dgamma(alpha, beta)
+}
+
+alpha = mu^2 / sig^2
+beta = mu / sig^2
+
+mu ~ dgamma(50.0, 1.0/100.0)
+sig ~ dexp(1.0)
+
+} "
+
+set.seed(113)
+
+data_jags = as.list(datBridge)
+data_jags
+params = c("lam", "mu", "sig")
+
+mod1 = jags.model(textConnection(mod1_string), data=data_jags, n.chains=3)
+update(mod1, 1e3)
+
+mod1_sim = coda.samples(model=mod1,
+                       variable.names=params,
+                       n.iter=5e3)
+mod1_csim = as.mcmc(do.call(rbind, mod1_sim))
+
+## convergence diagnostics
+plot(mod1_sim)
+par(mar=c(1,1,1,1))
+par(mar=c(5.1,4.1,4.1,2.1))
+
+gelman.diag(mod1_sim)
+autocorr.diag(mod1_sim)
+autocorr.plot(mod1_sim)
+effectiveSize(mod1_sim)
+
+## compute DIC
+dic1 = dic.samples(mod1, n.iter=1e3)
+dic1
+
+###Posterior Paramters and Model Results
+(pm_params = colMeans(mod1_csim))
+summary(mod1_sim)
+
+###Residual Analysis
+yhat = rep(pm_params[1:7], each=30)
+resid = datBridge$Bridge - yhat
+plot(resid)
+plot(jitter(yhat), resid)
+
+var(resid[yhat>6300])
+lam_resid = pm_params[1:7] - pm_params["mu"]
+plot(lam_resid)
